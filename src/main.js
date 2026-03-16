@@ -60,6 +60,11 @@ const bounceLight = new THREE.PointLight(0x8cd48c, 0.5, 20, 2);
 bounceLight.position.set(0, GROUND_Y + 0.5, 2);
 scene.add(bounceLight);
 
+// rim/back light for 3D depth separation
+const rimLight = new THREE.DirectionalLight(0xaaddff, 0.6);
+rimLight.position.set(-4, 8, -10);
+scene.add(rimLight);
+
 // ── post-processing ──
 const composer = setupPostProcessing(renderer, scene, camera, isMobile);
 
@@ -81,7 +86,7 @@ for (let i = 0; i < PARTICLE_POOL; i++) {
   particlePool.push({ mesh: m, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1 });
 }
 
-function spawnParticles3D(x, y, z, color, count, spread) {
+function spawnParticles3D(x, y, z, color, count, spread, type) {
   spread = spread || 4;
   let spawned = 0;
   for (const p of particlePool) {
@@ -90,12 +95,31 @@ function spawnParticles3D(x, y, z, color, count, spread) {
     p.mesh.position.set(x, y, z);
     p.mesh.material.color.set(color);
     p.mesh.material.opacity = 1;
-    p.mesh.scale.setScalar(0.6 + Math.random() * 1.2);
-    p.vx = (Math.random() - 0.5) * spread;
-    p.vy = Math.random() * spread * 0.8 + 2;
-    p.vz = (Math.random() - 0.5) * spread * 0.5;
-    p.life = 0.8 + Math.random() * 0.5;
-    p.maxLife = p.life;
+
+    if (type === 'landing') {
+      // semicircular puff: horizontal outward, slight upward arc
+      const angle = Math.PI + (Math.random() - 0.5) * Math.PI;
+      p.mesh.scale.setScalar(1.0 + Math.random() * 1.5);
+      p.vx = Math.cos(angle) * (2 + Math.random() * 2);
+      p.vy = 1.5 + Math.random() * 1.5;
+      p.vz = (Math.random() - 0.5) * 1.5;
+      p.life = 0.35 + Math.random() * 0.2;
+      p.maxLife = p.life;
+    } else if (type === 'wind') {
+      p.mesh.scale.setScalar(0.3 + Math.random() * 0.4);
+      p.vx = -(2 + Math.random() * 3);
+      p.vy = (Math.random() - 0.5) * 0.5;
+      p.vz = (Math.random() - 0.5) * 0.3;
+      p.life = 0.25 + Math.random() * 0.15;
+      p.maxLife = p.life;
+    } else {
+      p.mesh.scale.setScalar(0.6 + Math.random() * 1.2);
+      p.vx = (Math.random() - 0.5) * spread;
+      p.vy = Math.random() * spread * 0.8 + 2;
+      p.vz = (Math.random() - 0.5) * spread * 0.5;
+      p.life = 0.8 + Math.random() * 0.5;
+      p.maxLife = p.life;
+    }
     if (++spawned >= count) break;
   }
 }
@@ -126,6 +150,7 @@ for (let i = 0; i < TRAIL_POOL; i++) {
   trailPool.push({ mesh: m, life: 0 });
 }
 let trailCooldown = 0;
+let windTrailCd = 0;
 
 function spawnTrailGhost(px, py) {
   for (const t of trailPool) {
@@ -515,6 +540,28 @@ function animate() {
     }
   }
 
+  // wind trail while running fast
+  if (player.onGround && Math.abs(player.vx) > 3) {
+    windTrailCd -= dt;
+    if (windTrailCd <= 0) {
+      const wdir = player.vx > 0 ? -1 : 1;
+      spawnParticles3D(
+        player.mesh.position.x + wdir * 0.3, player.mesh.position.y + 0.5, 0,
+        0xffffff, 1, 1, 'wind'
+      );
+      windTrailCd = 0.06;
+    }
+  }
+
+  // landing puff
+  if (player.justLanded) {
+    const puffCount = isMobile ? 4 : 8;
+    spawnParticles3D(
+      player.mesh.position.x, player.mesh.position.y + 0.1, 0,
+      0xc8b090, puffCount, 3, 'landing'
+    );
+  }
+
   // platform-specific feedback on landing
   if (landedPlat && player.justLanded) {
     const ct = CTYPE[landedPlat.type];
@@ -779,12 +826,12 @@ function animate() {
 }
 
 function renderScene(dt, t) {
-  // camera follow
+  // camera follow with separate Y smoothing for weight
   const targetX = player.mesh.position.x + CAM_OFFSET.x;
   const targetY = player.mesh.position.y + CAM_OFFSET.y;
   const targetZ = player.mesh.position.z + CAM_OFFSET.z;
   camera.position.x += (targetX - camera.position.x) * 0.1;
-  camera.position.y += (targetY - camera.position.y) * 0.1;
+  camera.position.y += (targetY - camera.position.y) * 0.04;
   camera.position.z += (targetZ - camera.position.z) * 0.1;
 
   // screen shake
@@ -799,10 +846,28 @@ function renderScene(dt, t) {
     player.mesh.position.y + CAM_LOOK_OFFSET.y,
     CAM_LOOK_OFFSET.z
   );
+
+  // dynamic camera lean/tilt for 3D depth perception
+  const moveDir = player.vx || 0;
+  const targetLeanY = moveDir * 0.015;
+  camera.rotation.y += (targetLeanY - camera.rotation.y) * 0.05;
+
+  const vertDir = player.vy || 0;
+  const targetTiltX = -vertDir * 0.008;
+  camera.rotation.x += (targetTiltX - camera.rotation.x) * 0.03;
+
+  // lights follow player
   dirLight.position.x = player.mesh.position.x + 8;
   dirLight.target.position.x = player.mesh.position.x;
   dirLight.target.updateMatrixWorld();
   bounceLight.position.x = player.mesh.position.x;
+  rimLight.position.x = player.mesh.position.x - 4;
+
+  // update color grading time for film grain
+  if (composer && composer._colorGradingPass) {
+    composer._colorGradingPass.uniforms.uTime.value = t;
+  }
+
   if (composer) composer.render();
   else renderer.render(scene, camera);
 }

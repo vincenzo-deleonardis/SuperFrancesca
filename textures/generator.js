@@ -64,6 +64,76 @@ export function generateShadowTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+function _heightToNormal(heightCanvas, strength) {
+  const w = heightCanvas.width, h = heightCanvas.height;
+  const ctx = heightCanvas.getContext('2d');
+  const src = ctx.getImageData(0, 0, w, h).data;
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const octx = out.getContext('2d');
+  const dst = octx.createImageData(w, h);
+  const s = strength || 2.0;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = (y * w + x) * 4;
+      const dX = (src[i - 4] - src[i + 4]) / 255;
+      const dY = (src[i - w * 4] - src[i + w * 4]) / 255;
+      dst.data[i]     = (dX * s * 0.5 + 0.5) * 255;
+      dst.data[i + 1] = (dY * s * 0.5 + 0.5) * 255;
+      dst.data[i + 2] = 255;
+      dst.data[i + 3] = 255;
+    }
+  }
+  octx.putImageData(dst, 0, 0);
+  const tex = new THREE.CanvasTexture(out);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+export function generateGroundNormalMap() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 800; i++) {
+    const x = Math.random() * 256, y = Math.random() * 256;
+    const v = 100 + Math.random() * 50;
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(x, y, 1, 2 + Math.random() * 6);
+  }
+  for (let i = 0; i < 60; i++) {
+    const x = Math.random() * 256, y = Math.random() * 256;
+    ctx.fillStyle = `rgb(${140 + Math.random() * 30 | 0},${140 + Math.random() * 30 | 0},${140 + Math.random() * 30 | 0})`;
+    ctx.beginPath(); ctx.arc(x, y, 2 + Math.random() * 4, 0, Math.PI * 2); ctx.fill();
+  }
+  const tex = _heightToNormal(c, 2.0);
+  tex.repeat.set(40, 8);
+  return tex;
+}
+
+export function generateFabricNormalMap() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.strokeStyle = '#999999';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 128; i += 4) {
+    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 128); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(128, i); ctx.stroke();
+  }
+  for (let i = 0; i < 40; i++) {
+    const v = 115 + Math.random() * 25 | 0;
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(Math.random() * 128, Math.random() * 128, 2 + Math.random() * 3, 2 + Math.random() * 3);
+  }
+  const tex = _heightToNormal(c, 1.5);
+  tex.repeat.set(2, 2);
+  return tex;
+}
+
 export function generateEnvMap() {
   const size = 64;
   const colors = [

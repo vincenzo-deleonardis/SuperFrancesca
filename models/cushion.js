@@ -46,7 +46,7 @@ function buildSpring(radius, height, turns) {
   );
 }
 
-export function buildCushion(px, py, pz, w, h, d, type, fabricTex) {
+export function buildCushion(px, py, pz, w, h, d, type, fabricTex, fabricNormal) {
   const ct = CTYPE[type] || CTYPE.normal;
   const group = new THREE.Group();
 
@@ -82,6 +82,10 @@ export function buildCushion(px, py, pz, w, h, d, type, fabricTex) {
     envMapIntensity: 0.2
   };
   if (fabricTex) matOpts.map = fabricTex;
+  if (fabricNormal) {
+    matOpts.normalMap = fabricNormal;
+    matOpts.normalScale = new THREE.Vector2(0.6, 0.6);
+  }
   const cushion = new THREE.Mesh(geo, new THREE.MeshStandardMaterial(matOpts));
   cushion.castShadow = true;
   cushion.receiveShadow = true;
